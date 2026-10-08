@@ -73,5 +73,5 @@ direct_dependencies:
 - esp-idf-lib/bmp280
 - idf
 manifest_hash: e9139083c387eac863d68b0a593ed1c2631dc643670305c76e9d8ac18ee8f285
-target: esp32
+target: esp32c3
 version: 2.0.0
