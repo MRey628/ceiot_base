@@ -19,15 +19,17 @@
 #include <time.h>
 #include <sys/time.h>
 
+#include "wifi_credentials.h"
+
 #ifndef APP_CPU_NUM
 #define APP_CPU_NUM PRO_CPU_NUM
 #endif
 
 
-#define WIFI_SSID       ""
-#define WIFI_PASSWORD   ""
+#define HUMIDITY_URL    "http://api.open-meteo.com/v1/forecast?latitude=-34.61&longitude=-58.38&current=relative_humidity_2m"
+#define HUMIDITY_KEY    "\"relative_humidity_2m\":"
+#define HUMIDITY_EVERY  10   /* consultar cada 10 ciclos de 5 s = 30 seg */
 
-#define SERVER_URL      ""
 
 #define DEVICE_ID "01"
 
@@ -44,6 +46,7 @@ static char flagErrorLectura;
 static time_t now;
 struct tm ti;
 static char hora[24];
+float humedad_internet = -1;
 
 /* -----------------------------------------------------------
  * WiFi
@@ -278,10 +281,67 @@ static void http_get(void)
 }
 
 /* -----------------------------------------------------------
+ * GET humedad desde internet
+ * Devuelve la humedad relativa en % o -1 si falla.
+ * Respuesta esperada:
+ * {..."current_units":{...},"current":{"time":"...","interval":900,"relative_humidity_2m":72}}
+ * --------------------------------------------------------- */
+ 
+static float http_get_humedad(void)
+{
+    static char buf[512];
+    int len = 0, r;
+    float h = -1;
+    char *p;
+ 
+    ESP_LOGI(TAG, "GET %s", HUMIDITY_URL);
+ 
+    esp_http_client_config_t config = {
+        .url = HUMIDITY_URL,
+    };
+ 
+    esp_http_client_handle_t client =
+        esp_http_client_init(&config);
+ 
+    esp_err_t err = esp_http_client_open(client, 0);
+ 
+    if (err == ESP_OK) {
+ 
+        esp_http_client_fetch_headers(client);
+ 
+        while ((r = esp_http_client_read(client, buf + len,
+                                         sizeof(buf) - 1 - len)) > 0) {
+            len += r;
+        }
+        buf[len] = '\0';
+ 
+        /* Saltear "current_units" y buscar el valor dentro de "current" */
+        p = strstr(buf, "\"current\":");
+        if (p) p = strstr(p, HUMIDITY_KEY);
+        if (p) sscanf(p + strlen(HUMIDITY_KEY), "%f", &h);
+ 
+        ESP_LOGI(TAG, "GET status = %d, humedad = %.1f %%",
+                 esp_http_client_get_status_code(client), h);
+ 
+    } else {
+ 
+        ESP_LOGE(TAG,
+                 "GET failed: %s",
+                 esp_err_to_name(err));
+    }
+ 
+    esp_http_client_close(client);
+    esp_http_client_cleanup(client);
+ 
+    return h;
+}
+
+
+/* -----------------------------------------------------------
  * POST
  * --------------------------------------------------------- */
-
-static char *POST_DATA_TEMPLATE = "id="DEVICE_ID"&ts=%s&t=%0.2f&p=%0.2f&e=%s";
+static char *POST_DATA_TEMPLATE = "id="DEVICE_ID"&ts=%s&t=%0.2f&p=%0.2f&h=%0.2f&e=%s";
+//static char *POST_DATA_TEMPLATE = "id="DEVICE_ID"&ts=%s&t=%0.2f&p=%0.2f&e=%s";
 //static char *POST_DATA_TEMPLATE = "id="DEVICE_ID"&t=%0.2f&p=%0.2f&e=%s";
 //static char *POST_DATA_TEMPLATE = "id="DEVICE_ID"&t=%0.2f&h=%0.2f";
 
@@ -311,7 +371,7 @@ static void http_post(float *pressure, float *temperature, float *humidity) {
     }
     errorLectura[2]='\0';
 
-    sprintf(post_data,POST_DATA_TEMPLATE, hora, *temperature, *pressure,errorLectura);
+    sprintf(post_data,POST_DATA_TEMPLATE, hora, *temperature, *pressure, *humidity, errorLectura);
     //sprintf(post_data,POST_DATA_TEMPLATE, *temperature, *pressure,errorLectura);
     //sprintf(post_data,POST_DATA_TEMPLATE, *temperature, *humidity);
 
@@ -405,6 +465,7 @@ void app_main(void)
     float pressure, temperature, humidity;
     while (1) { 
        bmp280_read(&dev, &pressure, &temperature, &humidity);
+       humidity = http_get_humedad();
        http_post(&pressure, &temperature, &humidity);
        vTaskDelay(pdMS_TO_TICKS(5000));
     }

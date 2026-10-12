@@ -5,3 +5,4 @@ sdkconfig
 node_modules
 build
 managed_components
+perception/esp32c3_http_client_wifi_bmp280/main

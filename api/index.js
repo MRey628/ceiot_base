@@ -42,15 +42,16 @@ app.use(express.static('spa/static'));
 const PORT = 8080;
 
 app.post('/measurement', function (req, res) {
--       console.log("device id    : " + req.body.id + " key: " + req.body.key +" time: "+req.body.ts+ " temperature: " + req.body.t + " pressure: " + req.body.p + " status   : " + req.body.e);	
-    const {insertedId} = insertMeasurement({id:req.body.id,ts:req.body.ts,t:req.body.t,p:req.body.p,status:req.body.e});
+-       console.log("device id    : " + req.body.id + " key: " + req.body.key +" time: "+req.body.ts+ " temp: " + req.body.t + " pres: " + req.body.p + " hum: " + req.body.h + " status   : " + req.body.e);	
+    const {insertedId} = insertMeasurement({id:req.body.id,ts:req.body.ts,t:req.body.t,p:req.body.p,h:req.body.h,status:req.body.e});
 	res.send("received measurement into " +  insertedId);
 });
 
 app.post('/device', function (req, res) {
 	console.log("device id    : " + req.body.id + " name        : " + req.body.n + " key         : " + req.body.k );
 
-    db.public.none("INSERT INTO devices VALUES ('"+req.body.id+ "', '"+req.body.n+"', '"+req.body.k+"')");
+    //db.public.none("INSERT INTO devices VALUES ('"+req.body.id+ "', '"+req.body.n+"', '"+req.body.k+"')");
+    db.public.prepare("INSERT INTO devices VALUES ($1, $2, $3)").bind([req.body.id, req.body.n, req.body.k]).executeAll();
 	res.send("received new device");
 });
 
@@ -84,7 +85,8 @@ app.get('/web/device/:id', function (req,res) {
                 "</html>";
 
 
-    var device = db.public.many("SELECT * FROM devices WHERE device_id = '"+req.params.id+"'");
+    //var device = db.public.many("SELECT * FROM devices WHERE device_id = '"+req.params.id+"'");
+    var device = db.public.prepare("SELECT * FROM devices WHERE device_id = $1").bind([req.params.id]).executeAll().rows;
     console.log(device);
     res.send(render(template,{id:device[0].device_id, key: device[0].key, name:device[0].name}));
 });	
@@ -98,7 +100,8 @@ app.get('/term/device/:id', function (req, res) {
     var template = "Device name " + red   + "   {{name}}" + reset + "\n" +
 		   "       id   " + green + "       {{ id }} " + reset +"\n" +
 	           "       key  " + blue  + "  {{ key }}" + reset +"\n";
-    var device = db.public.many("SELECT * FROM devices WHERE device_id = '"+req.params.id+"'");
+    //var device = db.public.many("SELECT * FROM devices WHERE device_id = '"+req.params.id+"'");
+    var device = db.public.prepare("SELECT * FROM devices WHERE device_id = $1").bind([req.params.id]).executeAll().rows;
     console.log(device);
     res.send(render(template,{id:device[0].device_id, key: device[0].key, name:device[0].name}));
 });
